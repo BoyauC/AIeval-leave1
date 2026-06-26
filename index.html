@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI創意領航員 — 國小組複審評分平台</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #0d0f1e; --panel: #12142a; --border: #2a2d4a;
+  --accent: #6c8ef5; --text: #e2e4f0; --muted: #7a7d99;
+  --hover: #1c1f3a; --score-bg: #161830;
+  --green: #4ade80; --red: #f87171; --yellow: #facc15;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* Header */
+header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+header h1 { font-size: 1rem; font-weight: 700; color: var(--accent); }
+.reviewer-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 0.82rem; }
+.reviewer-wrap input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 0.82rem; width: 120px; }
+
+/* Main layout */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* Left panel */
+.left-panel { width: 240px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.panel-header { padding: 10px 12px; font-size: 0.78rem; color: var(--muted); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.work-list { flex: 1; overflow-y: auto; }
+.work-item { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+.work-item:hover { background: var(--hover); }
+.work-item.active { background: var(--hover); border-left: 3px solid var(--accent); }
+.work-item .num { font-size: 0.70rem; color: var(--muted); }
+.work-item .title { font-size: 0.88rem; font-weight: 600; margin-top: 2px; }
+.work-item .meta { font-size: 0.70rem; color: var(--muted); margin-top: 2px; }
+.score-badge { font-size: 0.72rem; margin-top: 4px; color: var(--muted); }
+.score-badge.done { color: var(--green); }
+
+/* Center viewer */
+.center-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+.viewer-tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab-btn { padding: 10px 16px; font-size: 0.82rem; background: none; border: none; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-btn.disabled { color: var(--border); cursor: not-allowed; opacity: 0.45; }
+.tab-btn.disabled:hover { border-bottom-color: transparent; }
+.viewer-content { flex: 1; display: flex; overflow: hidden; }
+.tab-pane { display: none; flex: 1; overflow: auto; }
+.tab-pane.active { display: flex; flex-direction: column; }
+#dialog1-pane.active, #dialog2-pane.active { flex-direction: column; }
+
+/* PDF controls */
+#pdf-controls { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0; font-size: 0.82rem; }
+#pdf-controls button { background: var(--hover); border: 1px solid var(--border); color: var(--text); padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+#pdf-controls button:hover { border-color: var(--accent); }
+#pdf-controls select { background: var(--hover); border: 1px solid var(--border); color: var(--text); padding: 3px 6px; border-radius: 4px; font-size: 0.78rem; }
+#pdf-page-info { color: var(--muted); font-size: 0.78rem; min-width: 60px; text-align: center; }
+
+/* Work and entry containers */
+#work-container, #entry-container { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: 12px; }
+
+/* No file placeholder */
+.no-file-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); gap: 10px; font-size: 0.9rem; }
+.no-file-placeholder .icon { font-size: 2.5rem; opacity: 0.25; }
+
+/* Ext link button */
+.ext-btn-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; }
+.ext-link-btn { display: inline-block; padding: 10px 24px; background: var(--accent); color: #fff; border-radius: 6px; text-decoration: none; font-size: 0.9rem; }
+.ext-link-btn:hover { opacity: 0.85; }
+
+/* Excel table */
+.xlsx-table { border-collapse: collapse; font-size: 0.78rem; min-width: 100%; }
+.xlsx-table th, .xlsx-table td { border: 1px solid var(--border); padding: 4px 8px; white-space: nowrap; cursor: pointer; }
+.xlsx-table th { background: var(--panel); color: var(--accent); font-weight: 600; }
+.xlsx-table td:hover { background: var(--hover); }
+.xlsx-table td.selected { background: #1e2a50; outline: 2px solid var(--accent); outline-offset: -1px; }
+.xlsx-table tr:nth-child(even) td { background: var(--score-bg); }
+.xlsx-table tr:nth-child(even) td:hover { background: var(--hover); }
+.xlsx-table tr:nth-child(even) td.selected { background: #1e2a50; }
+
+/* Cell preview bar */
+.cell-preview-bar { flex-shrink: 0; background: #12142a; border-top: 1px solid var(--border); padding: 6px 10px; display: flex; align-items: flex-start; gap: 8px; font-size: 0.78rem; min-height: 38px; max-height: 100px; }
+.cell-preview-label { color: var(--accent); font-weight: 600; white-space: nowrap; padding-top: 2px; font-size: 0.72rem; }
+.cell-preview-addr { color: var(--muted); white-space: nowrap; padding-top: 2px; min-width: 50px; }
+.cell-preview-content { color: var(--text); line-height: 1.5; white-space: pre-wrap; word-break: break-all; overflow-y: auto; flex: 1; }
+
+/* Right panel */
+.right-panel { width: 300px; flex-shrink: 0; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.right-panel .panel-header { padding: 10px 12px; font-size: 0.82rem; font-weight: 600; border-bottom: 1px solid var(--border); flex-shrink: 0; color: var(--text); }
+.scoring-area { flex: 1; overflow-y: auto; padding: 12px; }
+
+/* Work title in scoring area */
+.work-title-box { margin-bottom: 12px; }
+.work-title-box .work-name { font-size: 1rem; font-weight: 700; color: var(--accent); }
+.work-title-box .work-meta { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
+
+/* Quick scores */
+.quick-section { margin-bottom: 14px; }
+.quick-section label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; }
+.quick-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.quick-btn { flex: 1; padding: 8px 6px; background: var(--hover); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 600; transition: all 0.15s; }
+.quick-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Criteria scoring */
+.criterion { margin-bottom: 12px; background: var(--score-bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+.criterion-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.criterion-name { font-size: 0.82rem; font-weight: 600; }
+.criterion-score { font-size: 1.1rem; font-weight: 700; color: var(--accent); min-width: 28px; text-align: right; }
+.criterion-desc { font-size: 0.72rem; color: var(--muted); margin-bottom: 8px; line-height: 1.4; }
+.score-slider { width: 100%; accent-color: var(--accent); }
+.score-marks { display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+
+/* Total score */
+.total-box { background: var(--score-bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+.total-label { font-size: 0.82rem; color: var(--muted); }
+.total-score { font-size: 1.5rem; font-weight: 800; color: var(--yellow); }
+.initial-score { font-size: 0.78rem; color: var(--muted); }
+
+/* AI section */
+.ai-section { margin-bottom: 14px; }
+.ai-btn { width: 100%; padding: 8px; background: linear-gradient(135deg, #4c1d95, #1e40af); border: 1px solid #6d28d9; color: #fff; border-radius: 6px; cursor: pointer; font-size: 0.82rem; transition: opacity 0.15s; }
+.ai-btn:hover { opacity: 0.85; }
+.ai-result { margin-top: 8px; padding: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 0.78rem; color: var(--text); line-height: 1.5; white-space: pre-wrap; max-height: 120px; overflow-y: auto; display: none; }
+
+/* Comment */
+.comment-section { margin-bottom: 14px; }
+.comment-section textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 4px; font-size: 0.78rem; resize: vertical; min-height: 70px; font-family: inherit; }
+.comment-section textarea:focus { outline: none; border-color: var(--accent); }
+
+/* Actions */
+.action-section { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { flex: 1; padding: 8px; background: var(--hover); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 0.78rem; transition: all 0.15s; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.primary:hover { opacity: 0.85; }
+.btn.danger { border-color: var(--red); }
+.btn.danger:hover { background: var(--red); color: #fff; }
+
+/* API key section */
+.apikey-section { margin-bottom: 14px; }
+.apikey-section input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 8px; border-radius: 4px; font-size: 0.75rem; }
+
+/* Section label */
+.section-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 5px; display: block; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎓 AI創意領航員 — 國小組複審評分平台</h1>
+  <div class="reviewer-wrap">
+    <span style="color:var(--muted);font-size:0.78rem">評審姓名：</span>
+    <input type="text" id="reviewer-name" placeholder="請輸入姓名" oninput="localStorage.setItem('reviewer_name',this.value)">
+  </div>
+</header>
+
+<div class="main">
+  <!-- Left: Work list -->
+  <div class="left-panel">
+    <div class="panel-header">作品列表 (<span id="work-count">90</span>件)</div>
+    <div class="work-list" id="work-list"></div>
+  </div>
+
+  <!-- Center: Viewer -->
+  <div class="center-panel">
+    <div class="viewer-tabs">
+      <button class="tab-btn active" onclick="switchTab('work')" id="tab-work">📄 作品</button>
+      <button class="tab-btn" onclick="switchTab('entry')" id="tab-entry">📋 報名表</button>
+      <button class="tab-btn" onclick="switchTab('dialog1')" id="tab-dialog1">📊 對話歷程1</button>
+      <button class="tab-btn disabled" onclick="switchTab('dialog2')" id="tab-dialog2">📊 對話歷程2</button>
+    </div>
+    <div class="viewer-content">
+      <!-- Tab 1: Work -->
+      <div class="tab-pane active" id="work-pane">
+        <div id="pdf-controls">
+          <button onclick="prevPage()">◀ 上一頁</button>
+          <span id="pdf-page-info">—</span>
+          <button onclick="nextPage()">下一頁 ▶</button>
+          <select id="scale-select" onchange="changeScale(this.value)">
+            <option value="0.8">80%</option>
+            <option value="1.0" selected>100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="2.0">200%</option>
+          </select>
+        </div>
+        <div id="work-container"></div>
+      </div>
+      <!-- Tab 2: Entry form -->
+      <div class="tab-pane" id="entry-pane">
+        <div id="entry-container"></div>
+      </div>
+      <!-- Tab 3: Dialog 1 -->
+      <div class="tab-pane" id="dialog1-pane">
+        <div id="dialog1-container" style="flex:1;overflow:auto;width:100%"></div>
+        <div class="cell-preview-bar" id="dialog1-preview">
+          <span class="cell-preview-label">儲存格內容</span>
+          <span class="cell-preview-addr" id="dialog1-preview-addr">—</span>
+          <span class="cell-preview-content" id="dialog1-preview-content">點擊儲存格以檢視完整內容</span>
+        </div>
+      </div>
+      <!-- Tab 4: Dialog 2 -->
+      <div class="tab-pane" id="dialog2-pane">
+        <div id="dialog2-container" style="flex:1;overflow:auto;width:100%"></div>
+        <div class="cell-preview-bar" id="dialog2-preview">
+          <span class="cell-preview-label">儲存格內容</span>
+          <span class="cell-preview-addr" id="dialog2-preview-addr">—</span>
+          <span class="cell-preview-content" id="dialog2-preview-content">點擊儲存格以檢視完整內容</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Scoring -->
+  <div class="right-panel">
+    <div class="panel-header">📝 評分工作區</div>
+    <div class="scoring-area" id="scoring-area">
+      <div style="color:var(--muted);font-size:0.85rem;text-align:center;margin-top:40px">← 請從左側選擇作品</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== Config =====
+const FILE_BASE = '04收件/';
+const QUICK_SCORES = [12, 14, 16, 18, 20];
+const STORAGE_KEY = 'aieval_es_scores';
+const TAB_IDS = ['work', 'entry', 'dialog1', 'dialog2'];
+
+const CRITERIA = [
+  { key: 'prompt',   name: '提問策略',      weight: 0.2, desc: '指令是否具備背景、任務、限制等明確架構。' },
+  { key: 'critical', name: '批判與修正',    weight: 0.2, desc: '發現 AI 錯誤或偏誤的能力，以及人工優化的程度。能發現AI內容的錯誤或不完整，並理解AI在學習中的幫助角色，最後在產出之前能自己修改或補充。' },
+  { key: 'original', name: '原創性與應用',  weight: 0.2, desc: '作品的主題創意、解決問題的實際可行性。' },
+  { key: 'tools',    name: 'AI及數位工具應用', weight: 0.2, desc: '能夠在依照不同任務選擇合適工具，在對話中能夠不斷迭代成果，並且能辨識風險保護個人隱私。' },
+  { key: 'ethics',   name: '數位倫理',      weight: 0.2, desc: '能夠具備對AI的批判思考，思辨AI中的應用與取捨，並遵守著作權與學術誠信，覺察AI倫理，能正確標註AI工具使用範圍。' },
+];
+
+const WORKS = [
+  { id:1, title:'感恩童詩卡', school:'翁子國小', grade:'四年級',
+    folder:'01游O瑞',
+    workFile:'感恩童詩-404游尚瑞.pdf', entryFile:'40410游尚瑞 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'404游尚瑞E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:13, critical:13, original:14, tools:15, ethics:14 } },
+  { id:2, title:'《煮菜的用心》', school:'翁子國小', grade:'四年級',
+    folder:'02黃O柔',
+    workFile:'感恩卡-404黃善柔.pdf', entryFile:'40413黃善柔 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'404黃善柔E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:14, original:15, tools:15, ethics:15 } },
+  { id:3, title:'遊樂園的回憶', school:'翁子國小', grade:'四年級',
+    folder:'03傅O芸',
+    workFile:'感恩詩-404傅婕芸.pdf', entryFile:'40419傅婕芸 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'404傅婕芸E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:17, original:17, tools:18, ethics:16 } },
+  { id:4, title:'感恩童詩卡', school:'翁子國小', grade:'四年級',
+    folder:'04洪O甯',
+    workFile:'感恩童詩-404洪芷甯.pdf', entryFile:'40420洪芷甯 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'404洪芷甯E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:15, original:16, tools:18, ethics:17 } },
+  { id:5, title:'【媽媽的溫暖,雨中的陽光】', school:'翁子國小', grade:'四年級',
+    folder:'05傅O瑜',
+    workFile:'感恩童詩-404傅姵瑜.pdf', entryFile:'40421傅姵瑜 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'404傅姵瑜E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:18, original:17, tools:18, ethics:14 } },
+  { id:6, title:'我的奶奶', school:'翁子國小', grade:'四年級',
+    folder:'06許O量',
+    workFile:'感恩童詩-403許閎量.pdf', entryFile:'40304許閎量 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'403許閎量E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:19, original:18, tools:17, ethics:16 } },
+  { id:7, title:'媽媽的笑容', school:'翁子國小', grade:'四年級',
+    folder:'07邱O豪',
+    workFile:'感恩童詩-403邱崇豪.pdf', entryFile:'40305邱崇豪 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'403邱崇豪E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:18, original:15, tools:17, ethics:15 } },
+  { id:8, title:'感恩童詩卡', school:'翁子國小', grade:'四年級',
+    folder:'08劉O毓',
+    workFile:'感恩童詩-403劉哲毓.pdf', entryFile:'40306劉哲毓 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'403劉哲毓E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:17, original:16, tools:18, ethics:15 } },
+  { id:9, title:'我的媽媽', school:'翁子國小', grade:'四年級',
+    folder:'09陳O璨',
+    workFile:'感恩童詩-403陳柏璨.pdf', entryFile:'40312陳伯璨 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'403陳伯璨E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:16, original:17, tools:17, ethics:17 } },
+  { id:10, title:'我的第二個媽媽', school:'翁子國小', grade:'四年級',
+    folder:'10林O妤',
+    workFile:'感恩童詩-403林芊妤.pdf', entryFile:'40315林芊妤 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'403林芊妤E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:18, original:18, tools:18, ethics:16 } },
+  { id:11, title:'我的奶奶', school:'翁子國小', grade:'四年級',
+    folder:'11韓O白',
+    workFile:'感恩童詩-403韓宥白.pdf', entryFile:'40313韓宥白 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'403韓宥白E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:18, original:18, tools:18, ethics:18 } },
+  { id:12, title:'共讀的美好時光', school:'東園國小', grade:'四年級',
+    folder:'12陳O嫻',
+    workFile:'4011陳昕嫻 - 40113陳昕嫻.pdf', entryFile:'40113陳昕嫻【AI創意領航員：小學生成式AI應用競賽】報名表.docx 的副本 (2) - 40113陳昕嫻.docx',
+    dialogFile1:'40113-寫作精靈.xlsx', dialogFile2:'40113-繪圖精靈.xlsx',
+    initial:{ prompt:16, critical:14, original:15, tools:18, ethics:17 } },
+  { id:13, title:'淚中依靠', school:'東園國小', grade:'四年級',
+    folder:'13林O宥',
+    workFile:'40114林芝宥 - 40114林芝宥.pdf', entryFile:'40114林芝宥【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'40114-寫作精靈.xlsx', dialogFile2:'40114-繪圖精靈.xlsx',
+    initial:{ prompt:16, critical:18, original:17, tools:17, ethics:16 } },
+  { id:14, title:'我最愛的爸爸', school:'東園國小', grade:'四年級',
+    folder:'14葉O諠',
+    workFile:'40319葉采諠.pdf', entryFile:'40319葉采諠【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'40319葉采諠-寫作精靈.xlsx', dialogFile2:'40319葉采諠-繪圖精靈.xlsx',
+    initial:{ prompt:15, critical:16, original:18, tools:19, ethics:17 } },
+  { id:15, title:'好詞好句的陽光', school:'國光國小', grade:'四年級',
+    folder:'15林O羽',
+    workFile:'國光國小40125林芮羽_感恩小卡 - 40125林芮羽.pdf', entryFile:'國光國小40125林芮羽【AI創意領航員：小學生成式AI應用競賽】報名表.docx - 40125林芮羽.docx',
+    dialogFile1:'國光國小40125林芮羽_寫作精靈.xlsx', dialogFile2:'國光國小40125林芮羽_繪圖精靈.xlsx',
+    initial:{ prompt:16, critical:16, original:14, tools:16, ethics:16 } },
+  { id:16, title:'寫給媽媽的一首詩', school:'樹義國小', grade:'四年級',
+    folder:'16黃O倫',
+    workFile:'401-04-黃楷倫(寫給媽媽的一首詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表04.docx',
+    dialogFile1:'report_4_1_4_20260330090927.xlsx', dialogFile2:null,
+    initial:{ prompt:12, critical:12, original:14, tools:15, ethics:16 } },
+  { id:17, title:'給家人的詩', school:'樹義國小', grade:'四年級',
+    folder:'17石O佑',
+    workFile:'401-13-石崇佑(給家人的詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表13.docx',
+    dialogFile1:'report_4_1_13_20260330091524.xlsx', dialogFile2:null,
+    initial:{ prompt:13, critical:15, original:14, tools:16, ethics:14 } },
+  { id:18, title:'媽媽的努力與付出', school:'樹義國小', grade:'四年級',
+    folder:'18吳O樂',
+    workFile:'401-22-吳芊樂(給媽媽的詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表22.docx',
+    dialogFile1:'report_4_1_22_20260331113920.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:19, original:16, tools:18, ethics:18 } },
+  { id:19, title:'感謝媽媽的童詩', school:'樹義國小', grade:'四年級',
+    folder:'19顏O思',
+    workFile:'401-26-顏語思(感謝媽媽的童詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表26.docx',
+    dialogFile1:'report_4_1_26_20260330091455.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:18, original:15, tools:17, ethics:17 } },
+  { id:20, title:'給學校的感恩童詩', school:'樹義國小', grade:'四年級',
+    folder:'20許O安',
+    workFile:'401-10-許晏安(給學校的感恩童詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表10.docx',
+    dialogFile1:'report_4_1_10_20260330090728.xlsx', dialogFile2:null,
+    initial:{ prompt:10, critical:10, original:12, tools:14, ethics:14 } },
+  { id:21, title:'給全家人的童詩', school:'樹義國小', grade:'四年級',
+    folder:'21廖O翰',
+    workFile:'401-14-廖均翰(給全家的童詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表14.docx',
+    dialogFile1:'report_4_1_14_20260330091616.xlsx', dialogFile2:null,
+    initial:{ prompt:10, critical:12, original:12, tools:12, ethics:14 } },
+  { id:22, title:'感恩童詩 媽​媽', school:'樹義國小', grade:'四年級',
+    folder:'22林O言',
+    workFile:'401-12-林品言(感恩童詩     媽媽).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表12.docx',
+    dialogFile1:'report_4_1_12_20260331113452.xlsx', dialogFile2:null,
+    initial:{ prompt:13, critical:14, original:13, tools:13, ethics:14 } },
+  { id:23, title:'感恩童詩 媽​媽', school:'樹義國小', grade:'四年級',
+    folder:'23何O晴',
+    workFile:'401-15-何宇晴(給媽媽的詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表15.docx',
+    dialogFile1:'report_4_1_15_20260330091258.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:13, original:12, tools:14, ethics:14 } },
+  { id:24, title:'媽媽我愛你', school:'樹義國小', grade:'四年級',
+    folder:'24鄭O甄',
+    workFile:'401-23-鄭允甄(給媽媽的詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表23.docx',
+    dialogFile1:'report_4_1_23_20260330091336.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:18, original:17, tools:17, ethics:17 } },
+  { id:25, title:'感恩童詩', school:'樹義國小', grade:'四年級',
+    folder:'25謝O希',
+    workFile:'401-25-謝辰希(給媽媽的感恩童詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表25.docx',
+    dialogFile1:'report_4_1_25_20260402151008.xlsx', dialogFile2:null,
+    initial:{ prompt:12, critical:12, original:13, tools:13, ethics:14 } },
+  { id:26, title:'給爸媽的一首詩', school:'樹義國小', grade:'四年級',
+    folder:'26吳O芯',
+    workFile:'401-16-吳景芯(給爸媽的一首詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表16.docx',
+    dialogFile1:'report_4_1_16_20260331113305.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:18, original:15, tools:15, ethics:16 } },
+  { id:27, title:'給媽媽的詩', school:'樹義國小', grade:'四年級',
+    folder:'27周O涵',
+    workFile:'401-24-周郁涵(給媽媽的詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表24.docx',
+    dialogFile1:'report_4_1_24_20260330091522.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:17, original:17, tools:15, ethics:18 } },
+  { id:28, title:'感恩童詩', school:'樹義國小', grade:'四年級',
+    folder:'28蔣O妍',
+    workFile:'401-20-蔣智妍(感恩童詩).pdf', entryFile:'115年度國小- AI創意領航員小學生成式AI應用競賽報名表20.docx',
+    dialogFile1:'report_4_1_20_20260330090740.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:14, original:14, tools:15, ethics:16 } },
+  { id:29, title:'畢業感謝小卡', school:'翁子國小', grade:'五年級',
+    folder:'29張O榳',
+    workFile:'畢業季祝福卡-501張恩榳.pdf', entryFile:'50115張恩榳 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx.pdf',
+    dialogFile1:'501張恩榳E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:17, original:16, tools:16, ethics:16 } },
+  { id:30, title:'畢業感恩卡', school:'翁子國小', grade:'六年級',
+    folder:'30邱O霖',
+    workFile:'畢業季祝福卡-603邱建霖.pdf', entryFile:'60302邱建霖 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'603邱建霖E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:16, original:16, tools:17, ethics:18 } },
+  { id:31, title:'畢業感謝卡', school:'翁子國小', grade:'六年級',
+    folder:'31田O銓',
+    workFile:'畢業季祝福卡-603田祐銓.pdf', entryFile:'60305田祐銓 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'603田祐銓E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:19, critical:18, original:18, tools:19, ethics:18 } },
+  { id:32, title:'畢業季祝福卡', school:'翁子國小', grade:'六年級',
+    folder:'32張O寧',
+    workFile:'畢業季祝福卡-603張恬寧.pdf', entryFile:'60312張恬寧 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'603張恬寧E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:19, critical:17, original:18, tools:18, ethics:18 } },
+  { id:33, title:'畢業感恩卡', school:'翁子國小', grade:'六年級',
+    folder:'33張O甄',
+    workFile:'畢業季祝福卡-603張宜甄.pdf', entryFile:'60313張宜甄 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'603張宜甄E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:19, critical:17, original:18, tools:18, ethics:18 } },
+  { id:34, title:'畢業感恩卡', school:'翁子國小', grade:'六年級',
+    folder:'34謝O恬',
+    workFile:'畢業季祝福卡-603謝欣恬.pdf', entryFile:'60325謝欣恬 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'603謝欣恬E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:19, critical:17, original:18, tools:18, ethics:18 } },
+  { id:35, title:'畢業季祝福卡', school:'翁子國小', grade:'五年級',
+    folder:'35林O繕',
+    workFile:'畢業季祝福卡-501林雍繕.pdf', entryFile:'50122林雍繕 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'501林雍繕E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:19, critical:16, original:19, tools:18, ethics:18 } },
+  { id:36, title:'畢業季祝福卡', school:'翁子國小', grade:'六年級',
+    folder:'36江O軒',
+    workFile:'畢業季祝福卡-601江采軒.pdf', entryFile:'60116江采軒 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'601江采軒E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:19, critical:17, original:18, tools:18, ethics:18 } },
+  { id:37, title:'畢業祝福卡', school:'翁子國小', grade:'六年級',
+    folder:'37潘O妍',
+    workFile:'畢業季祝福卡-601潘玟妍.pdf', entryFile:'60123潘玟妍 - 115年度國小【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'601潘玟妍E度對話匯出.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:12, original:16, tools:14, ethics:16 } },
+  { id:38, title:'畢業季', school:'翁子國小', grade:'五年級',
+    folder:'38林O晴',
+    workFile:'50123林苡晴 - 50123林苡晴.pdf', entryFile:'50123林苡晴【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50123林苡晴-繪圖精靈.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:17, original:16, tools:18, ethics:16 } },
+  { id:39, title:'畢業記', school:'翁子國小', grade:'五年級',
+    folder:'39林O凌',
+    workFile:'50127林世凌 - 50127林世凌.pdf', entryFile:'50127林世凌【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50127林世凌-繪圖精靈.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:16, original:16, tools:16, ethics:16 } },
+  { id:40, title:'畢業快樂', school:'東園國小', grade:'五年級',
+    folder:'40吳O安',
+    workFile:'50213吳怡安.pdf', entryFile:'50213吳怡安【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50213吳怡安-寫作精靈.xlsx', dialogFile2:'50213吳怡安-繪圖精靈.xlsx',
+    initial:{ prompt:14, critical:14, original:14, tools:15, ethics:16 } },
+  { id:41, title:'畢業快樂', school:'東園國小', grade:'五年級',
+    folder:'41高O華',
+    workFile:'50226高家華.pdf', entryFile:'50226高家華【AI創意領航員：小學生成式AI應用競賽】報名表.docx 的副本 - 50226高家華.docx',
+    dialogFile1:'50226-寫作精靈.xlsx', dialogFile2:'50226-繪圖精靈.xlsx',
+    initial:{ prompt:15, critical:14, original:13, tools:14, ethics:14 } },
+  { id:42, title:'給全六年級', school:'東園國小', grade:'五年級',
+    folder:'42洪O翔',
+    workFile:'50307洪煜翔.pdf', entryFile:'洪煜翔【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50307-繪圖精靈.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:15, original:15, tools:14, ethics:14 } },
+  { id:43, title:'畢業了!希望以後你們更加厲害!', school:'東園國小', grade:'五年級',
+    folder:'43周O鈺',
+    workFile:'50312周詩鈺 畢業祝福.pdf', entryFile:'50312周詩鈺【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50312-寫作精靈.xlsx', dialogFile2:'50312-繪圖精靈.xlsx',
+    initial:{ prompt:14, critical:10, original:0, tools:10, ethics:14 } },
+  { id:44, title:'致畢業的”你們”', school:'東園國小', grade:'五年級',
+    folder:'44余O容',
+    workFile:'50318余采容.pdf', entryFile:'50318余采容【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50318余采容-寫作精靈.xlsx', dialogFile2:'50318余采容-繪圖精靈.xlsx',
+    initial:{ prompt:12, critical:12, original:13, tools:15, ethics:14 } },
+  { id:45, title:'夢想啟航', school:'東園國小', grade:'五年級',
+    folder:'45張O脩',
+    workFile:'畢業 - 50320張子脩.pdf', entryFile:'50320張子脩【AI創意領航員：小學生成式AI應用競賽】報名表.docx',
+    dialogFile1:'50320-寫作精靈.xlsx', dialogFile2:'50320-繪圖精靈.xlsx',
+    initial:{ prompt:15, critical:15, original:15, tools:17, ethics:14 } },
+  { id:46, title:'畢業祝福', school:'東園國小', grade:'五年級',
+    folder:'46林O榛',
+    workFile:'50321林晏榛.pdf', entryFile:'50321林晏榛【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50321-寫作精靈.xlsx', dialogFile2:'50321-繪圖精靈.xlsx',
+    initial:{ prompt:12, critical:14, original:14, tools:16, ethics:14 } },
+  { id:47, title:'畢業祝福', school:'東園國小', grade:'五年級',
+    folder:'47賴O菲',
+    workFile:'50322賴苡菲.pdf', entryFile:'50322賴苡菲【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50322-寫作精靈賴.xlsx', dialogFile2:'50322-繪圖精靈.xlsx',
+    initial:{ prompt:12, critical:13, original:15, tools:16, ethics:14 } },
+  { id:48, title:'恭賀畢業', school:'東園國小', grade:'五年級',
+    folder:'48湯O瑩',
+    workFile:'50323湯子瑩 - 50323湯子瑩.pdf', entryFile:'50323湯子瑩【AI創意領航員：小學生成式AI應用競賽】報名表.docx.docx',
+    dialogFile1:'50323-繪圖精靈.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:15, original:14, tools:16, ethics:14 } },
+  { id:49, title:'未來學校', school:'中山國小', grade:'五年級',
+    folder:'49于O將',
+    workFile:'于子將 (2).pdf', entryFile:'于子將 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'于子將對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:15, original:0, tools:10, ethics:14 } },
+  { id:50, title:'畢業快樂', school:'中山國小', grade:'五年級',
+    folder:'50吳和恩',
+    workFile:'吳和恩.pdf', entryFile:'吳和恩 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'吳和恩對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:17, original:17, tools:18, ethics:16 } },
+  { id:51, title:'給六年級的卡片', school:'中山國小', grade:'五年級',
+    folder:'51呂O葳',
+    workFile:'呂宥葳.pdf', entryFile:'呂宥葳 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'呂宥葳對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:19, critical:17, original:19, tools:19, ethics:18 } },
+  { id:52, title:'畢業生青春', school:'中山國小', grade:'五年級',
+    folder:'52林O昀',
+    workFile:'林昕昀.pdf', entryFile:'林昕昀 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'林昕昀對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:17, original:15, tools:15, ethics:16 } },
+  { id:53, title:'畢業卡', school:'中山國小', grade:'五年級',
+    folder:'53林O辰',
+    workFile:'林冠辰.pdf', entryFile:'林冠辰 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'林冠辰對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:15, original:17, tools:14, ethics:14 } },
+  { id:54, title:'夢想就在未來', school:'中山國小', grade:'五年級',
+    folder:'54林O綦',
+    workFile:'林茂綦.pdf', entryFile:'林茂綦 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'林茂綦對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:14, original:16, tools:16, ethics:16 } },
+  { id:55, title:'六年級畢業卡片', school:'中山國小', grade:'五年級',
+    folder:'55林O辰',
+    workFile:'林祐辰.pdf', entryFile:'林祐辰 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'林祐辰對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:18, original:17, tools:17, ethics:16 } },
+  { id:56, title:'畢業卡', school:'中山國小', grade:'五年級',
+    folder:'56林O恩',
+    workFile:'林楷恩.pdf', entryFile:'林楷恩 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'林楷恩對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:17, original:18, tools:17, ethics:16 } },
+  { id:57, title:'畢業卡片', school:'中山國小', grade:'五年級',
+    folder:'57胡O慈',
+    workFile:'胡云慈.pdf', entryFile:'胡云慈 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'胡云慈對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:18, original:17, tools:18, ethics:16 } },
+  { id:58, title:'六年級畢業照', school:'中山國小', grade:'五年級',
+    folder:'58黃O',
+    workFile:'黃河.pdf', entryFile:'黃河 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'黃河對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:16, original:16, tools:15, ethics:14 } },
+  { id:59, title:'三麗鷗與哈利波特融合的畢業照', school:'中山國小', grade:'五年級',
+    folder:'59黃O恩',
+    workFile:'黃琦恩.pdf', entryFile:'黃琦恩 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'黃琦恩對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:13, critical:12, original:16, tools:12, ethics:12 } },
+  { id:60, title:'像素關卡', school:'中山國小', grade:'五年級',
+    folder:'60塗O菲',
+    workFile:'塗楷菲.pdf', entryFile:'塗楷菲 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本 (1).docx',
+    dialogFile1:'塗楷菲對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:16, original:18, tools:18, ethics:18 } },
+  { id:61, title:'學習藏寶圖', school:'中山國小', grade:'五年級',
+    folder:'61楊O杰',
+    workFile:'楊宥杰.pdf', entryFile:'楊宥杰 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'楊宥杰對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:17, original:15, tools:17, ethics:18 } },
+  { id:62, title:'充滿機會的未來', school:'中山國小', grade:'五年級',
+    folder:'62葉O蓁',
+    workFile:'葉華蓁.pdf', entryFile:'葉華蓁 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'葉華蓁的對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:18, original:17, tools:17, ethics:16 } },
+  { id:63, title:'六年級畢業祝福', school:'中山國小', grade:'五年級',
+    folder:'63劉O晨',
+    workFile:'劉宥晨.pdf', entryFile:'劉宥晨 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'劉宥晨對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:19, critical:19, original:18, tools:18, ethics:18 } },
+  { id:64, title:'荒野亂鬥祝賀畢業單', school:'中山國小', grade:'五年級',
+    folder:'64潘O泫',
+    workFile:'潘禾泫.pdf', entryFile:'潘禾泫 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'潘禾泫對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:16, original:18, tools:18, ethics:18 } },
+  { id:65, title:'畢業卡', school:'中山國小', grade:'五年級',
+    folder:'65蔡O妍',
+    workFile:'蔡欣妍.pdf', entryFile:'蔡欣妍 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'蔡欣妍對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:18, original:18, tools:17, ethics:16 } },
+  { id:66, title:'畢業生卡片', school:'中山國小', grade:'五年級',
+    folder:'66鄭O辰',
+    workFile:'鄭宇辰.pdf', entryFile:'鄭宇辰 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'鄭宇辰對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:14, original:14, tools:14, ethics:14 } },
+  { id:67, title:'畢業金字塔', school:'中山國小', grade:'五年級',
+    folder:'67賴O芊',
+    workFile:'賴亦芊.pdf', entryFile:'賴亦芊 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'賴亦芊對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:16, original:17, tools:16, ethics:16 } },
+  { id:68, title:'未來任務', school:'中山國小', grade:'五年級',
+    folder:'68賴O佑',
+    workFile:'賴俊佑.pdf', entryFile:'賴俊佑 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'賴俊佑對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:14, original:13, tools:16, ethics:16 } },
+  { id:69, title:'給六年級的祝福語', school:'中山國小', grade:'五年級',
+    folder:'69謝O祐',
+    workFile:'謝承祐.pdf', entryFile:'謝承祐 - 115年度國小- AI創意領航員小學生成式AI應用競賽報名表.docx 的副本.docx',
+    dialogFile1:'謝承祐對話紀錄.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:14, original:14, tools:16, ethics:14 } },
+  { id:70, title:'畢業 YA!', school:'丹鳳國小', grade:'六年級',
+    folder:'70王O媛',
+    workFile:'王星媛作品_畢業YA!.pdf', entryFile:'王星媛_報名表.pdf',
+    dialogFile1:'report_6_6_14_20260521144650.xlsx', dialogFile2:null,
+    initial:{ prompt:18, critical:18, original:18, tools:18, ethics:16 } },
+  { id:71, title:'畢業小兔子', school:'丹鳳國小', grade:'六年級',
+    folder:'71王O臻',
+    workFile:'王昱臻_畢業小兔子.pdf', entryFile:'王昱臻_報名表.pdf',
+    dialogFile1:'report_6_6_18_20260518134924.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:15, original:16, tools:16, ethics:16 } },
+  { id:72, title:'勇敢向前', school:'丹鳳國小', grade:'六年級',
+    folder:'72吳O晴',
+    workFile:'吳幼晴作品_勇敢向前.pdf', entryFile:'吳幼晴_報名表.pdf',
+    dialogFile1:'report_6_6_16_20260518135053.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:15, original:14, tools:15, ethics:14 } },
+  { id:73, title:'畢業快樂', school:'丹鳳國小', grade:'六年級',
+    folder:'73李O霖',
+    workFile:'李宥霖_畢業快樂.pdf', entryFile:'李宥霖_報名表.pdf',
+    dialogFile1:'report_6_6_4_20260521143349.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:15, original:16, tools:15, ethics:14 } },
+  { id:74, title:'畢業快樂', school:'丹鳳國小', grade:'六年級',
+    folder:'74李O楷',
+    workFile:'李睿楷_畢業快樂.pdf', entryFile:'李睿楷_報名表.pdf',
+    dialogFile1:'report_6_6_13_20260521142908.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:14, original:14, tools:16, ethics:14 } },
+  { id:75, title:'青春的花季', school:'丹鳳國小', grade:'六年級',
+    folder:'75林O恩',
+    workFile:'林子恩_青春的花季.pdf', entryFile:'林子恩_報名表.pdf',
+    dialogFile1:'report_6_6_19_20260521143255.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:14, original:16, tools:16, ethics:16 } },
+  { id:76, title:'畢業季', school:'丹鳳國小', grade:'六年級',
+    folder:'76俞O臣',
+    workFile:'俞映臣_畢業季.pdf', entryFile:'俞映臣_報名表.pdf',
+    dialogFile1:'report_6_6_28_20260518082905.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:12, original:12, tools:14, ethics:14 } },
+  { id:77, title:'比 YA!快樂', school:'丹鳳國小', grade:'六年級',
+    folder:'77徐O雅',
+    workFile:'徐暄雅_比YA!快樂.pdf', entryFile:'徐暄雅_報名表.pdf',
+    dialogFile1:'report_6_6_24_20260521143322.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:16, original:16, tools:16, ethics:13 } },
+  { id:78, title:'畢業快樂', school:'丹鳳國小', grade:'六年級',
+    folder:'78殷O婷',
+    workFile:'殷子婷作品-畢業快樂.pdf', entryFile:'殷子婷_報名表.pdf',
+    dialogFile1:'report_6_6_20_20260521143145.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:15, original:16, tools:16, ethics:16 } },
+  { id:79, title:'Happy Graduation', school:'丹鳳國小', grade:'六年級',
+    folder:'79高O翔',
+    workFile:'高宥翔_畢業快樂.pdf', entryFile:'高宥翔_報名表.pdf',
+    dialogFile1:'report_6_6_6_20260518135407.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:16, original:15, tools:16, ethics:16 } },
+  { id:80, title:'那年我們一起畢業了！', school:'丹鳳國小', grade:'六年級',
+    folder:'80陳O元',
+    workFile:'陳祺元_那年我們一起畢業了!.pdf', entryFile:'陳祺元_報名表.pdf',
+    dialogFile1:'report_6_6_3_20260521143335.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:15, original:13, tools:14, ethics:14 } },
+  { id:81, title:'畢業樂', school:'丹鳳國小', grade:'六年級',
+    folder:'81黃O晴',
+    workFile:'黃楀晴_畢業樂!.pdf', entryFile:'黃楀晴_報名表.pdf',
+    dialogFile1:'report_6_6_17_20260521144000.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:16, original:15, tools:16, ethics:16 } },
+  { id:82, title:'奔向未來', school:'丹鳳國小', grade:'六年級',
+    folder:'82楊O睿',
+    workFile:'楊紘睿_奔向未來.pdf', entryFile:'楊紘睿_報名表.pdf',
+    dialogFile1:'report_6_6_1_20260518135218.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:18, original:17, tools:17, ethics:16 } },
+  { id:83, title:'畢業賀喜', school:'丹鳳國小', grade:'六年級',
+    folder:'83蔡O享',
+    workFile:'蔡帛享_畢業賀喜.pdf', entryFile:'蔡帛享_報名表.pdf',
+    dialogFile1:'report_6_6_10_20260518154050.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:14, original:16, tools:14, ethics:14 } },
+  { id:84, title:'畢業快樂', school:'丹鳳國小', grade:'六年級',
+    folder:'84鄧O勳',
+    workFile:'鄧義勳作品_畢業快樂.pdf', entryFile:'鄧義勳_報名表.pdf',
+    dialogFile1:'report_6_6_12_20260521143341.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:16, original:16, tools:16, ethics:16 } },
+  { id:85, title:'畢業快樂~YA!', school:'丹鳳國小', grade:'六年級',
+    folder:'85林O澤',
+    workFile:'林辰澤_畢業快樂~YA!.pdf', entryFile:'林辰澤_報名表.pdf',
+    dialogFile1:'report_6_6_9_20260521142923.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:14, original:13, tools:15, ethics:14 } },
+  { id:86, title:'畢業快樂', school:'丹鳳國小', grade:'六年級',
+    folder:'86林O芹',
+    workFile:'林資芹_畢業快樂.pdf', entryFile:'林資芹_報名表.pdf',
+    dialogFile1:'report_6_6_27_20260518135058.xlsx', dialogFile2:null,
+    initial:{ prompt:17, critical:18, original:17, tools:16, ethics:16 } },
+  { id:87, title:'畢業祝福', school:'丹鳳國小', grade:'六年級',
+    folder:'87張O晴',
+    workFile:'張茗晴_畢業祝福.pdf', entryFile:'張茗晴_報名表.pdf',
+    dialogFile1:'report_6_6_21_20260518134617.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:14, original:14, tools:15, ethics:14 } },
+  { id:88, title:'彩色畢業帽', school:'丹鳳國小', grade:'六年級',
+    folder:'88黃O睿',
+    workFile:'黃禹睿作品_彩色畢業帽.pdf', entryFile:'黃禹睿_報名表.pdf',
+    dialogFile1:'report_6_6_8_20260521143112.xlsx', dialogFile2:null,
+    initial:{ prompt:14, critical:16, original:13, tools:16, ethics:16 } },
+  { id:89, title:'紙飛機的畢業旅行', school:'丹鳳國小', grade:'六年級',
+    folder:'89楊O澄',
+    workFile:'楊沐澄作品_紙飛機的畢業旅行.pdf', entryFile:'楊沐澄_報名表.pdf',
+    dialogFile1:'report_6_6_15_20260521143157.xlsx', dialogFile2:null,
+    initial:{ prompt:15, critical:17, original:15, tools:16, ethics:14 } },
+  { id:90, title:'一路順風', school:'丹鳳國小', grade:'六年級',
+    folder:'90廖O林',
+    workFile:'廖艾林_一路順風.pdf', entryFile:'廖艾林_報名表.pdf',
+    dialogFile1:'report_6_6_25_20260518103434.xlsx', dialogFile2:null,
+    initial:{ prompt:16, critical:14, original:14, tools:14, ethics:14 } },
+];
+
+// ===== State =====
+let currentWork = null;
+let activeTab = 'work';
+let pdfDoc = null, pdfPage = 1, pdfScale = 1.0, pdfRenderTask = null;
+let activePdfContainer = 'work-container';
+
+// ===== Storage =====
+function loadStorage() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+}
+function saveStorage(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function getWorkData(id) { return (loadStorage()[id] || {}); }
+function saveWorkData(id, data) {
+  const s = loadStorage(); s[id] = { ...s[id], ...data }; saveStorage(s);
+}
+
+// ===== Score calc =====
+function calcTotal(w, d) {
+  let sum = 0, hasAll = true;
+  for (const c of CRITERIA) {
+    if (d[c.key] == null) { hasAll = false; break; }
+    sum += d[c.key] * c.weight;
+  }
+  return hasAll ? Math.round(sum * 10) / 10 : null;
+}
+function calcInitial(w) {
+  let sum = 0;
+  for (const c of CRITERIA) sum += (w.initial[c.key] || 0) * c.weight;
+  return Math.round(sum * 10) / 10;
+}
+
+// ===== Init =====
+document.getElementById('reviewer-name').value = localStorage.getItem('reviewer_name') || '';
+document.getElementById('work-count').textContent = WORKS.length;
+renderWorkList();
+
+// ===== Work List =====
+function renderWorkList() {
+  const s = loadStorage();
+  const list = document.getElementById('work-list');
+  list.innerHTML = WORKS.map(w => {
+    const d = s[w.id] || {};
+    const total = calcTotal(w, d);
+    const done = total !== null;
+    const active = currentWork?.id === w.id ? ' active' : '';
+    return `<div class="work-item${active}" onclick="selectWork(${w.id})">
+      <div class="num">#${w.id}</div>
+      <div class="title">${w.title}</div>
+      <div class="meta">${w.school} · ${w.grade}</div>
+      <div class="score-badge${done?' done':''}">複審: ${total ?? '—'} / 初審: ${calcInitial(w)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ===== Select Work =====
+function selectWork(id) {
+  currentWork = WORKS.find(w => w.id === id);
+  renderWorkList();
+  renderScoring();
+
+  const tab4 = document.getElementById('tab-dialog2');
+  const has = !!currentWork.dialogFile2;
+  tab4.classList.toggle('disabled', !has);
+  tab4.title = has ? '' : '此作品無第二份對話歷程';
+  if (activeTab === 'dialog2' && !has) { activeTab = 'work'; }
+
+  switchTab(activeTab);
+}
+
+// ===== Tab switching =====
+function switchTab(tab) {
+  if (tab === 'dialog2' && !currentWork?.dialogFile2) return;
+  activeTab = tab;
+  TAB_IDS.forEach(id => {
+    document.getElementById('tab-' + id)?.classList.toggle('active', id === tab);
+    document.getElementById(id + '-pane')?.classList.toggle('active', id === tab);
+  });
+  renderActiveTab();
+}
+
+function renderActiveTab() {
+  if (!currentWork) return;
+  switch (activeTab) {
+    case 'work':    renderWorkFile(); break;
+    case 'entry':   renderEntryFile(); break;
+    case 'dialog1': renderExcel(1); break;
+    case 'dialog2': renderExcel(2); break;
+  }
+}
+
+// ===== File path helper =====
+function getFilePath(w, field) {
+  if (!w[field]) return null;
+  return `${FILE_BASE}${w.folder}/${w[field]}`;
+}
+function getExt(filename) {
+  return filename ? filename.split('.').pop().toLowerCase() : '';
+}
+function extOpenBtn(url, label) {
+  return `<div class="ext-btn-wrap">
+    <p style="color:var(--muted);font-size:0.85rem">此格式無法直接預覽</p>
+    <a class="ext-link-btn" href="${url}" target="_blank">⬇ 開啟 / 下載 ${label}</a>
+  </div>`;
+}
+
+// ===== PDF rendering =====
+async function loadPdf(url, containerId) {
+  activePdfContainer = containerId;
+  const controls = document.getElementById('pdf-controls');
+  if (controls) controls.style.display = containerId === 'work-container' ? 'flex' : 'flex';
+  const container = document.getElementById(containerId);
+  container.innerHTML = '<p style="color:var(--muted);margin-top:40px;text-align:center">載入 PDF 中…</p>';
+  document.getElementById('pdf-page-info').textContent = '載入中…';
+  try {
+    pdfDoc = await pdfjsLib.getDocument(url).promise;
+    pdfPage = 1;
+    await renderPdfPage(containerId);
+  } catch(e) {
+    container.innerHTML = `<div style="color:var(--red);padding:20px;text-align:center">PDF 載入失敗：${e.message}</div>`;
+  }
+}
+
+async function renderPdfPage(containerId) {
+  if (!pdfDoc) return;
+  if (pdfRenderTask) { try { pdfRenderTask.cancel(); } catch {} }
+  const cid = containerId || activePdfContainer;
+  const page = await pdfDoc.getPage(pdfPage);
+  const vp = page.getViewport({ scale: pdfScale });
+  const canvas = document.createElement('canvas');
+  canvas.width = vp.width; canvas.height = vp.height;
+  const container = document.getElementById(cid);
+  container.innerHTML = '';
+  container.appendChild(canvas);
+  pdfRenderTask = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
+  await pdfRenderTask.promise;
+  document.getElementById('pdf-page-info').textContent = `${pdfPage} / ${pdfDoc.numPages}`;
+}
+
+function prevPage() { if (pdfDoc && pdfPage > 1) { pdfPage--; renderPdfPage(activePdfContainer); } }
+function nextPage() { if (pdfDoc && pdfPage < pdfDoc.numPages) { pdfPage++; renderPdfPage(activePdfContainer); } }
+function changeScale(v) { pdfScale = parseFloat(v); renderPdfPage(activePdfContainer); }
+
+// ===== Tab 1: Work file =====
+async function renderWorkFile() {
+  const w = currentWork;
+  const path = getFilePath(w, 'workFile');
+  const ext = getExt(w.workFile);
+  const controls = document.getElementById('pdf-controls');
+  const container = document.getElementById('work-container');
+
+  if (!path) { controls.style.display = 'none'; container.innerHTML = '<div class="no-file-placeholder"><div class="icon">📄</div><div>無作品檔案</div></div>'; return; }
+
+  if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+    controls.style.display = 'none';
+    container.innerHTML = `<div style="width:100%;display:flex;align-items:center;justify-content:center;padding:12px"><img src="${path}" style="max-width:100%;object-fit:contain"></div>`;
+  } else if (ext === 'pdf') {
+    controls.style.display = 'flex';
+    await loadPdf(path, 'work-container');
+  } else {
+    controls.style.display = 'none';
+    container.innerHTML = extOpenBtn(path, '作品');
+  }
+}
+
+// ===== Tab 2: Entry form =====
+async function renderEntryFile() {
+  const w = currentWork;
+  const path = getFilePath(w, 'entryFile');
+  const ext = getExt(w.entryFile);
+  const container = document.getElementById('entry-container');
+  document.getElementById('pdf-controls').style.display = 'none';
+
+  if (!path) { container.innerHTML = '<div class="no-file-placeholder"><div class="icon">📋</div><div>無報名表檔案</div></div>'; return; }
+
+  if (ext === 'pdf') {
+    document.getElementById('pdf-controls').style.display = 'flex';
+    await loadPdf(path, 'entry-container');
+  } else {
+    container.innerHTML = extOpenBtn(path, '報名表');
+  }
+}
+
+// ===== Tab 3 & 4: Excel =====
+function colLabel(n) {
+  let s = '';
+  for (n++; n > 0; n = Math.floor((n - 1) / 26))
+    s = String.fromCharCode(((n - 1) % 26) + 65) + s;
+  return s;
+}
+
+async function renderExcel(num) {
+  const field = `dialogFile${num}`;
+  const containerId = `dialog${num}-container`;
+  const previewAddr = document.getElementById(`dialog${num}-preview-addr`);
+  const previewContent = document.getElementById(`dialog${num}-preview-content`);
+  const container = document.getElementById(containerId);
+  const bar = document.getElementById(`dialog${num}-preview`);
+  const w = currentWork;
+  document.getElementById('pdf-controls').style.display = 'none';
+
+  if (previewAddr) previewAddr.textContent = '—';
+  if (previewContent) previewContent.textContent = '點擊儲存格以檢視完整內容';
+
+  if (!w[field]) {
+    container.innerHTML = `<div class="no-file-placeholder"><div class="icon">📊</div><div>無第 ${num} 份對話歷程</div></div>`;
+    if (bar) bar.style.display = 'none';
+    return;
+  }
+  if (bar) bar.style.display = 'flex';
+
+  const path = getFilePath(w, field);
+  container.innerHTML = '<p style="color:var(--muted);padding:20px;text-align:center">載入中…</p>';
+
+  try {
+    const resp = await fetch(path);
+    const buf = await resp.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    const rows = data.map((row, ri) => {
+      const isHeader = ri === 0;
+      const cells = row.map((cell, ci) => {
+        const tag = isHeader ? 'th' : 'td';
+        const addr = `${colLabel(ci)}${ri + 1}`;
+        const disp = String(cell ?? '');
+        const short = disp.length > 60 ? disp.slice(0, 60) + '…' : disp;
+        return `<${tag} data-addr="${addr}" data-full="${disp.replace(/"/g,'&quot;').replace(/\n/g,'&#10;')}">${short}</${tag}>`;
+      }).join('');
+      return `<tr>${cells}</tr>`;
+    }).join('');
+
+    container.innerHTML = `<div style="padding:10px;overflow:auto;width:100%;height:100%"><table class="xlsx-table" id="xlsx-table-${num}">${rows}</table></div>`;
+
+    document.getElementById(`xlsx-table-${num}`).addEventListener('click', e => {
+      const cell = e.target.closest('td, th');
+      if (!cell) return;
+      document.querySelectorAll(`#xlsx-table-${num} .selected`).forEach(el => el.classList.remove('selected'));
+      cell.classList.add('selected');
+      if (previewAddr) previewAddr.textContent = cell.dataset.addr || '';
+      if (previewContent) previewContent.textContent = (cell.dataset.full || cell.textContent) || '（空白）';
+    });
+  } catch(e) {
+    container.innerHTML = extOpenBtn(path, `對話歷程${num}`);
+  }
+}
+
+// ===== Scoring UI =====
+function renderScoring() {
+  if (!currentWork) return;
+  const w = currentWork;
+  const d = getWorkData(w.id);
+  const total = calcTotal(w, d);
+
+  const html = `
+    <div class="work-title-box">
+      <div class="work-name">${w.title}</div>
+      <div class="work-meta">${w.school} · ${w.grade} · #${w.id}</div>
+    </div>
+
+    <div class="quick-section">
+      <span class="section-label">快速填分（所有項目）</span>
+      <div class="quick-btns">
+        ${QUICK_SCORES.map(s => `<button class="quick-btn" onclick="quickFill(${s})">${s}</button>`).join('')}
+      </div>
+    </div>
+
+    <div class="total-box">
+      <div>
+        <div class="total-label">複審總分</div>
+        <div class="initial-score">初審: ${calcInitial(w)}</div>
+      </div>
+      <div class="total-score">${total ?? '—'}</div>
+    </div>
+
+    ${CRITERIA.map(c => {
+      const val = d[c.key] ?? '';
+      const pct = val !== '' ? ((val - 0) / 20 * 100).toFixed(0) : 0;
+      return `<div class="criterion">
+        <div class="criterion-header">
+          <span class="criterion-name">${c.name}</span>
+          <span class="criterion-score" id="score-display-${c.key}">${val !== '' ? val : '—'}</span>
+        </div>
+        <div class="criterion-desc">${c.desc}</div>
+        <input type="range" class="score-slider" min="0" max="20" step="1" value="${val !== '' ? val : 10}"
+          oninput="updateScore('${c.key}', this.value)" onchange="updateScore('${c.key}', this.value)">
+        <div class="score-marks"><span>0</span><span>5</span><span>10</span><span>15</span><span>20</span></div>
+        <div style="text-align:right;margin-top:4px">
+          <span style="font-size:0.75rem;color:var(--muted)">初審: ${w.initial[c.key]}</span>
+        </div>
+      </div>`;
+    }).join('')}
+
+    <div class="comment-section">
+      <span class="section-label">評語</span>
+      <textarea id="comment-input" placeholder="輸入評語…" oninput="saveComment(this.value)">${d.comment || ''}</textarea>
+    </div>
+
+    <div class="apikey-section">
+      <span class="section-label">Claude API Key（AI評分用）</span>
+      <input type="password" id="api-key-input" placeholder="sk-ant-..." value="${localStorage.getItem('claude_api_key')||''}" oninput="localStorage.setItem('claude_api_key',this.value)">
+    </div>
+
+    <div class="ai-section">
+      <button class="ai-btn" onclick="runAiScore()">✨ AI 輔助評分</button>
+      <div class="ai-result" id="ai-result"></div>
+    </div>
+
+    <div class="action-section">
+      <button class="btn primary" onclick="exportCSV()">📥 匯出 CSV</button>
+      <button class="btn danger" onclick="clearWork()">🗑 清除此作品</button>
+    </div>
+  `;
+
+  document.getElementById('scoring-area').innerHTML = html;
+}
+
+function updateScore(key, val) {
+  val = parseInt(val);
+  document.getElementById(`score-display-${key}`).textContent = val;
+  saveWorkData(currentWork.id, { [key]: val });
+  updateTotal();
+  renderWorkList();
+}
+
+function updateTotal() {
+  const d = getWorkData(currentWork.id);
+  const total = calcTotal(currentWork, d);
+  const el = document.querySelector('.total-score');
+  if (el) el.textContent = total ?? '—';
+}
+
+function quickFill(score) {
+  const d = {};
+  for (const c of CRITERIA) d[c.key] = score;
+  saveWorkData(currentWork.id, d);
+  renderScoring();
+  renderWorkList();
+}
+
+function saveComment(val) {
+  saveWorkData(currentWork.id, { comment: val });
+}
+
+function clearWork() {
+  if (!confirm(`確定要清除 #${currentWork.id} 的評分資料？`)) return;
+  const s = loadStorage();
+  delete s[currentWork.id];
+  saveStorage(s);
+  renderScoring();
+  renderWorkList();
+}
+
+// ===== AI scoring =====
+async function runAiScore() {
+  const apiKey = localStorage.getItem('claude_api_key');
+  if (!apiKey) { alert('請先輸入 Claude API Key'); return; }
+  if (!currentWork) return;
+
+  const resultEl = document.getElementById('ai-result');
+  resultEl.style.display = 'block';
+  resultEl.textContent = '分析中…';
+
+  const w = currentWork;
+  const prompt = `你是一位國小AI競賽的評審委員。請根據以下評分標準對作品進行評分（每項0-20分）：
+
+評分項目：
+${CRITERIA.map(c => `- ${c.name}（${Math.round(c.weight*100)}%）：${c.desc}`).join('\n')}
+
+作品資訊：
+- 題目：${w.title}
+- 學校：${w.school}
+- 年級：${w.grade}
+- 初審分數：${CRITERIA.map(c => `${c.name}=${w.initial[c.key]}`).join('、')}
+
+請給出每個評分項目的建議分數（0-20整數）和簡短說明，最後給出總評。`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-calls': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await resp.json();
+    resultEl.textContent = data.content?.[0]?.text || JSON.stringify(data);
+  } catch(e) {
+    resultEl.textContent = '錯誤：' + e.message;
+  }
+}
+
+// ===== CSV Export =====
+function exportCSV() {
+  const reviewer = localStorage.getItem('reviewer_name') || '未設定';
+  const date = new Date().toISOString().slice(0, 10);
+  const header = ['組別', '學校', '年級', '題目', ...CRITERIA.map(c => c.name), '複審總分', '初審總分', '評語', '評審姓名'];
+  const rows = [header];
+  const s = loadStorage();
+
+  WORKS.forEach(w => {
+    const d = s[w.id] || {};
+    const scores = CRITERIA.map(c => d[c.key] != null ? d[c.key] : '');
+    const total = calcTotal(w, d);
+    rows.push([w.id, w.school, w.grade, w.title, ...scores, total ?? '', calcInitial(w), d.comment || '', reviewer]);
+  });
+
+  const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `複審評分_${reviewer}_${date}.csv`;
+  a.click();
+}
+</script>
+</body>
+</html>
